@@ -6,6 +6,7 @@ private struct StagedAsset {
   let mediaType: Int
   let tempFileURL: URL
   let fileBytes: Int64
+  let fileName: String?
 }
 
 private struct UploadTaskContext {
@@ -313,10 +314,15 @@ final class AssetUploader: NSObject, URLSessionTaskDelegate, URLSessionDataDeleg
           self.handleExtractionFailure(localIdentifier: pendingAsset.localIdentifier,
                                        message: error.localizedDescription)
         case .success(let tempResult):
+          // Persist file size + original name so they're available via queryAssets.
+          try? self.database.setFileInfo(localIdentifier: pendingAsset.localIdentifier,
+                                         fileBytes: tempResult.fileBytes,
+                                         fileName: tempResult.fileName)
           let staged = StagedAsset(localIdentifier: pendingAsset.localIdentifier,
                                    mediaType: pendingAsset.mediaType,
                                    tempFileURL: tempResult.fileURL,
-                                   fileBytes: tempResult.fileBytes)
+                                   fileBytes: tempResult.fileBytes,
+                                   fileName: tempResult.fileName)
           self.stagedQueue.append(staged)
           self.stagedBytes += staged.fileBytes
         }
@@ -839,13 +845,15 @@ final class AssetUploader: NSObject, URLSessionTaskDelegate, URLSessionDataDeleg
   // MARK: - PHAsset extraction
 
   private func writeAssetToTempFile(asset: PHAsset,
-                                    completion: @escaping (Result<(fileURL: URL, fileBytes: Int64), Error>) -> Void) {
+                                    completion: @escaping (Result<(fileURL: URL, fileBytes: Int64, fileName: String?), Error>) -> Void) {
     guard let resource = preferredResource(for: asset) else {
       completion(.failure(NSError(domain: "media_backup",
                                   code: -1,
                                   userInfo: [NSLocalizedDescriptionKey: "No asset resource available"])))
       return
     }
+
+    let originalFileName = resource.originalFilename
 
     do {
       let folder = try tempFolder()
@@ -868,7 +876,7 @@ final class AssetUploader: NSObject, URLSessionTaskDelegate, URLSessionDataDeleg
 
         do {
           let fileSize = try self.fileSize(at: tempFileURL)
-          completion(.success((fileURL: tempFileURL, fileBytes: fileSize)))
+          completion(.success((fileURL: tempFileURL, fileBytes: fileSize, fileName: originalFileName)))
         } catch {
           completion(.failure(error))
         }

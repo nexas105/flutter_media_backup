@@ -323,6 +323,23 @@ final class AssetDatabase {
     }
   }
 
+  func setFileInfo(localIdentifier: String, fileBytes: Int64, fileName: String?) throws {
+    try withLock {
+      _ = try executeUpdate(
+        sql: "UPDATE assets SET file_bytes = ?, file_name = coalesce(?, file_name) WHERE local_id = ?;",
+        bind: { statement in
+          sqlite3_bind_int64(statement, 1, sqlite3_int64(fileBytes))
+          if let fileName {
+            self.bindText(statement, index: 2, value: fileName)
+          } else {
+            sqlite3_bind_null(statement, 2)
+          }
+          self.bindText(statement, index: 3, value: localIdentifier)
+        }
+      )
+    }
+  }
+
   func markPending(localIdentifier: String) throws {
     try withLock {
       _ = try executeUpdate(
@@ -590,7 +607,7 @@ final class AssetDatabase {
         SELECT local_id, media_type, media_subtypes, creation_ts, modification_ts,
                duration, pixel_width, pixel_height, is_favorite, is_hidden,
                source_type, upload_status, retry_count, last_error, uploaded_at,
-               remote_path
+               remote_path, file_bytes, file_name
         FROM assets
         \(whereClause)
         \(orderBy)
@@ -628,6 +645,9 @@ final class AssetDatabase {
         row["lastError"] = readString(statement, col: 13)
         row["uploadedAt"] = readOptionalDouble(statement, col: 14)
         row["remotePath"] = readString(statement, col: 15)
+        row["fileBytes"] = sqlite3_column_type(statement, 16) == SQLITE_NULL
+          ? nil : Int(sqlite3_column_int64(statement, 16))
+        row["fileName"] = readString(statement, col: 17)
         rows.append(row)
       }
 
@@ -636,10 +656,6 @@ final class AssetDatabase {
   }
 
   func getAsset(localIdentifier: String) throws -> [String: Any]? {
-    let results = try queryAssets(status: nil, mediaType: nil,
-                                  limit: 1, offset: 0,
-                                  orderBy: "")
-    // queryAssets doesn't filter by ID, so use a dedicated query
     return try withLock {
       guard let db else {
         throw AssetDatabaseError.message("Database is not initialized")
@@ -649,7 +665,7 @@ final class AssetDatabase {
         SELECT local_id, media_type, media_subtypes, creation_ts, modification_ts,
                duration, pixel_width, pixel_height, is_favorite, is_hidden,
                source_type, upload_status, retry_count, last_error, uploaded_at,
-               remote_path
+               remote_path, file_bytes, file_name
         FROM assets WHERE local_id = ?;
       """
 
@@ -676,6 +692,9 @@ final class AssetDatabase {
       row["lastError"] = readString(statement, col: 13)
       row["uploadedAt"] = readOptionalDouble(statement, col: 14)
       row["remotePath"] = readString(statement, col: 15)
+      row["fileBytes"] = sqlite3_column_type(statement, 16) == SQLITE_NULL
+        ? nil : Int(sqlite3_column_int64(statement, 16))
+      row["fileName"] = readString(statement, col: 17)
       return row
     }
   }
@@ -905,6 +924,8 @@ final class AssetDatabase {
     // Remote path stored on successful upload so users can build UIs /
     // generate download links without knowing the provider config.
     try addColumnIfMissing(columnName: "remote_path", definition: "TEXT")
+    try addColumnIfMissing(columnName: "file_bytes", definition: "INTEGER")
+    try addColumnIfMissing(columnName: "file_name", definition: "TEXT")
   }
 
   private func addColumnIfMissing(columnName: String, definition: String) throws {

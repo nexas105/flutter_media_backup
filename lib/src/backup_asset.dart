@@ -24,6 +24,13 @@ class BackupAsset {
   /// generate signed links, or verify remote existence.
   final String? remotePath;
 
+  /// File size in bytes. Available after extraction (before upload starts).
+  final int? fileBytes;
+
+  /// Original filename from the photo library (e.g. `IMG_1234.HEIC`).
+  /// Available after extraction.
+  final String? fileName;
+
   const BackupAsset({
     required this.localIdentifier,
     required this.mediaType,
@@ -41,6 +48,8 @@ class BackupAsset {
     this.lastError,
     this.uploadedAt,
     this.remotePath,
+    this.fileBytes,
+    this.fileName,
   });
 
   factory BackupAsset.fromMap(Map<String, dynamic> m) {
@@ -61,6 +70,8 @@ class BackupAsset {
       lastError: m['lastError'] as String?,
       uploadedAt: _optionalDateTime(m['uploadedAt']),
       remotePath: m['remotePath'] as String?,
+      fileBytes: (m['fileBytes'] as num?)?.toInt(),
+      fileName: m['fileName'] as String?,
     );
   }
 
