@@ -1,10 +1,11 @@
-## 0.2.0
+## 0.3.0
 
 ### Added
 
 - **Asset query API**: `queryAssets()`, `getAsset()`, `countAssets()` for building custom UIs (gallery views, progress screens, file browsers)
 - **`BackupAsset` model**: typed Dart object with all metadata — `localIdentifier`, `mediaType`, `pixelWidth/Height`, `duration`, `createdAt`, `remotePath`, `uploadStatus`, `lastError`, and more
 - **`remotePath` persistence**: successful uploads store the remote object key in SQLite, queryable via `asset.remotePath` — use it to generate signed download URLs or verify remote existence
+- **`fileBytes` + `fileName` persistence**: original filename (`IMG_1234.HEIC`) and file size stored in SQLite after extraction — available on `BackupAsset` without needing the upload event stream
 - **`AssetQuery` builder**: filter by `BackupStatus`, `BackupMediaType`, paginate with `limit`/`offset`, sort by `createdAt`/`modifiedAt`/`uploadedAt`
 - **Convenience getters**: `asset.isDone`, `asset.isPending`, `asset.isFailed`, `asset.isImage`, `asset.isVideo`
 

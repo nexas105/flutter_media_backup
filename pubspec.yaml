@@ -3,7 +3,7 @@ description: >
   iOS photo & video backup plugin. Scans the photo library into SQLite,
   uploads to Supabase, S3, GCS, Azure, Firebase or any HTTP endpoint with
   resumable uploads, byte-based concurrency, and push-based progress events.
-version: 0.2.0
+version: 0.3.0
 homepage: https://github.com/nexas105/flutter_media_backup
 repository: https://github.com/nexas105/flutter_media_backup
 issue_tracker: https://github.com/nexas105/flutter_media_backup/issues
