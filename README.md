@@ -106,6 +106,46 @@ MediaBackup.instance.uploader.events.listen((event) {
 
 `statusCounts()` polling still works as a fallback; the event stream is additive.
 
+### Asset query API
+
+Query the backup database to build custom UIs — gallery views, progress screens, remote file browsers:
+
+```dart
+// All uploaded images, newest first, paginated
+final uploaded = await MediaBackup.instance.queryAssets(
+  const AssetQuery(
+    status: BackupStatus.done,
+    mediaType: BackupMediaType.image,
+    limit: 20,
+    offset: 0,
+    sortBy: AssetSortBy.uploadedAt,
+  ),
+);
+
+for (final asset in uploaded) {
+  print('${asset.localIdentifier} -> ${asset.remotePath}');
+  print('  ${asset.pixelWidth}x${asset.pixelHeight}, uploaded ${asset.uploadedAt}');
+}
+
+// Single asset lookup
+final asset = await MediaBackup.instance.getAsset('PHAsset/123');
+if (asset != null && asset.isDone) {
+  final downloadUrl = buildSignedUrl(asset.remotePath!);
+}
+
+// Fast count without loading rows
+final failedCount = await MediaBackup.instance.countAssets(
+  status: BackupStatus.failed,
+);
+final videoCount = await MediaBackup.instance.countAssets(
+  mediaType: BackupMediaType.video,
+);
+```
+
+`BackupAsset` exposes all metadata: `localIdentifier`, `mediaType`, `pixelWidth/Height`, `duration`, `createdAt`, `modifiedAt`, `uploadStatus`, `remotePath`, `uploadedAt`, `lastError`, `retryCount`, `isFavorite`, `isHidden`.
+
+The `remotePath` is the actual object key used during upload — use it to generate signed download URLs, verify remote existence, or display in a file browser.
+
 ## Upload providers
 
 Pick one of the bundled providers or plug your own backend via `CustomUploadProvider`:
@@ -159,7 +199,9 @@ Nested under `MediaBackupSettings.ios`:
 | `downloadFromICloud` | `true` | `PHAssetResourceManager` is allowed to pull iCloud-only originals before upload; set false to only back up what's already on-device |
 | `useBackgroundSession` | `false` | Use `URLSessionConfiguration.background(...)` so transfers keep running after app suspend/kill (requires AppDelegate wiring — see below). Leave off in the simulator: delegate callbacks are flaky there |
 
-## Runtime control — `MediaBackup.instance.uploader`
+## Runtime control
+
+### Uploader — `MediaBackup.instance.uploader`
 
 | Method / Property | Purpose |
 |---|---|
@@ -169,6 +211,14 @@ Nested under `MediaBackupSettings.ios`:
 | `statusCounts()` | returns typed `UploadStatusCounts` with `pending/uploading/done/failed/total/progress` |
 | `snapshot()` | convenience wrapper — counts + timestamp |
 | `events` | `Stream<UploadEvent>` — push-based per-asset events (started, progress, completed, failed, statusCounts) |
+
+### Data access — `MediaBackup.instance`
+
+| Method | Purpose |
+|---|---|
+| `queryAssets(AssetQuery)` | paginated, filterable query returning `List<BackupAsset>` with all metadata + `remotePath` |
+| `getAsset(localIdentifier)` | single asset lookup by iOS `localIdentifier` |
+| `countAssets(status?, mediaType?)` | fast count without loading rows |
 
 ## Retry + failure handling
 

@@ -90,4 +90,16 @@ abstract class MediaBackupPlatform extends PlatformInterface {
   Stream<UploadEvent> get uploadEvents {
     throw UnimplementedError('uploadEvents has not been implemented.');
   }
+
+  Future<List<Map<String, dynamic>>> queryAssets(Map<String, dynamic> query) {
+    throw UnimplementedError('queryAssets() has not been implemented.');
+  }
+
+  Future<Map<String, dynamic>?> getAsset(String localIdentifier) {
+    throw UnimplementedError('getAsset() has not been implemented.');
+  }
+
+  Future<int> countAssets({String? status, int? mediaType}) {
+    throw UnimplementedError('countAssets() has not been implemented.');
+  }
 }

@@ -181,4 +181,31 @@ class MethodChannelMediaBackup extends MediaBackupPlatform {
         .map((event) =>
             UploadEvent.fromMap(Map<String, dynamic>.from(event as Map)));
   }
+
+  @override
+  Future<List<Map<String, dynamic>>> queryAssets(
+      Map<String, dynamic> query) async {
+    final result = await methodChannel.invokeListMethod<Map>(
+        'queryAssets', query);
+    return (result ?? [])
+        .map((m) => Map<String, dynamic>.from(m))
+        .toList();
+  }
+
+  @override
+  Future<Map<String, dynamic>?> getAsset(String localIdentifier) async {
+    final result = await methodChannel.invokeMapMethod<String, dynamic>(
+        'getAsset', {'localIdentifier': localIdentifier});
+    return result == null ? null : Map<String, dynamic>.from(result);
+  }
+
+  @override
+  Future<int> countAssets({String? status, int? mediaType}) async {
+    final result = await methodChannel.invokeMethod<int>(
+        'countAssets', {
+      'status': ?status,
+      'mediaType': ?mediaType,
+    });
+    return result ?? 0;
+  }
 }

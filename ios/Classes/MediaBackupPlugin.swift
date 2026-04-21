@@ -360,6 +360,63 @@ public class MediaBackupPlugin: NSObject, FlutterPlugin, FlutterStreamHandler {
                               details: nil))
         }
       }
+    case "queryAssets":
+      withComponents(result: result) { components in
+        let args = call.arguments as? [String: Any]
+        let status = args?["status"] as? String
+        let mediaType = args?["mediaType"] as? Int
+        let limit = args?["limit"] as? Int ?? 50
+        let offset = args?["offset"] as? Int ?? 0
+        let sortBy = args?["sortBy"] as? String ?? "creation_ts"
+        let ascending = args?["ascending"] as? Bool ?? false
+        let dir = ascending ? "ASC" : "DESC"
+        let orderBy = "ORDER BY ifnull(\(sortBy), 0) \(dir), local_id \(dir)"
+
+        do {
+          let rows = try components.database.queryAssets(status: status,
+                                                         mediaType: mediaType,
+                                                         limit: limit,
+                                                         offset: offset,
+                                                         orderBy: orderBy)
+          result(rows)
+        } catch {
+          result(FlutterError(code: "QUERY_FAILED",
+                              message: error.localizedDescription,
+                              details: nil))
+        }
+      }
+    case "getAsset":
+      withComponents(result: result) { components in
+        guard let args = call.arguments as? [String: Any],
+              let localId = args["localIdentifier"] as? String else {
+          result(FlutterError(code: "INVALID_ARGUMENTS",
+                              message: "getAsset requires localIdentifier",
+                              details: nil))
+          return
+        }
+        do {
+          let asset = try components.database.getAsset(localIdentifier: localId)
+          result(asset)
+        } catch {
+          result(FlutterError(code: "QUERY_FAILED",
+                              message: error.localizedDescription,
+                              details: nil))
+        }
+      }
+    case "countAssets":
+      withComponents(result: result) { components in
+        let args = call.arguments as? [String: Any]
+        let status = args?["status"] as? String
+        let mediaType = args?["mediaType"] as? Int
+        do {
+          let count = try components.database.countAssets(status: status, mediaType: mediaType)
+          result(count)
+        } catch {
+          result(FlutterError(code: "COUNT_FAILED",
+                              message: error.localizedDescription,
+                              details: nil))
+        }
+      }
     default:
       result(FlutterMethodNotImplemented)
     }

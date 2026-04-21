@@ -1,5 +1,6 @@
 import 'dart:io';
 
+import 'backup_asset.dart';
 import 'ios_settings.dart';
 import 'media_backup_errors.dart';
 import 'media_backup_logger.dart';
@@ -209,6 +210,45 @@ class MediaBackup {
     MediaBackupLogger.instance.info(_tag, 'resetDatabase complete',
         context: result);
     return result;
+  }
+
+  // MARK: - Asset query API
+
+  /// Query the backup database with filters and pagination.
+  /// Returns a list of [BackupAsset] objects for building custom UIs.
+  ///
+  /// ```dart
+  /// final uploaded = await MediaBackup.instance.queryAssets(
+  ///   const AssetQuery(status: BackupStatus.done, limit: 20),
+  /// );
+  /// for (final asset in uploaded) {
+  ///   print('${asset.localIdentifier} → ${asset.remotePath}');
+  /// }
+  /// ```
+  Future<List<BackupAsset>> queryAssets([
+    AssetQuery query = const AssetQuery(),
+  ]) async {
+    final rows = await MediaBackupPlatform.instance.queryAssets(query.toMap());
+    return rows.map(BackupAsset.fromMap).toList();
+  }
+
+  /// Get a single asset by its local identifier.
+  /// Returns null if the asset is not in the database.
+  Future<BackupAsset?> getAsset(String localIdentifier) async {
+    final row = await MediaBackupPlatform.instance.getAsset(localIdentifier);
+    return row == null ? null : BackupAsset.fromMap(row);
+  }
+
+  /// Count assets matching optional filters.
+  /// Faster than [queryAssets] when you only need the count.
+  Future<int> countAssets({
+    BackupStatus? status,
+    BackupMediaType? mediaType,
+  }) {
+    return MediaBackupPlatform.instance.countAssets(
+      status: status?.name,
+      mediaType: mediaType?.raw,
+    );
   }
 
   Future<MediaBackupInitResult> initialize() async {

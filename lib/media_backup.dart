@@ -1,3 +1,4 @@
+export 'src/backup_asset.dart';
 export 'src/ios_settings.dart';
 export 'src/media_backup.dart';
 export 'src/media_backup_errors.dart';

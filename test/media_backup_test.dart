@@ -90,6 +90,32 @@ class MockMediaBackupPlatform
 
   @override
   Stream<UploadEvent> get uploadEvents => const Stream.empty();
+
+  @override
+  Future<List<Map<String, dynamic>>> queryAssets(
+      Map<String, dynamic> query) async {
+    return [
+      <String, dynamic>{
+        'localIdentifier': 'test-1',
+        'mediaType': 1,
+        'uploadStatus': 'done',
+        'remotePath': 'photos/test-1',
+      },
+    ];
+  }
+
+  @override
+  Future<Map<String, dynamic>?> getAsset(String localIdentifier) async {
+    return <String, dynamic>{
+      'localIdentifier': localIdentifier,
+      'mediaType': 1,
+      'uploadStatus': 'done',
+      'remotePath': 'photos/$localIdentifier',
+    };
+  }
+
+  @override
+  Future<int> countAssets({String? status, int? mediaType}) async => 42;
 }
 
 Future<MediaBackup> _bootstrap() async {

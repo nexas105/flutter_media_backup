@@ -13,6 +13,7 @@ private struct UploadTaskContext {
   let mediaType: Int
   let tempFileURL: URL
   let tempFileBytes: Int64
+  let remotePath: String?
   var responseBody: Data = Data()
 }
 
@@ -394,11 +395,15 @@ final class AssetUploader: NSObject, URLSessionTaskDelegate, URLSessionDataDeleg
                                     "url": request.url?.absoluteString ?? "",
                                   ])
 
+    // Extract the remote path from the request URL (path after the bucket/host).
+    let remotePath = request.url?.path
+
     let task = session.uploadTask(with: request, fromFile: staged.tempFileURL)
     activeTasks[task.taskIdentifier] = UploadTaskContext(localIdentifier: staged.localIdentifier,
                                                          mediaType: staged.mediaType,
                                                          tempFileURL: staged.tempFileURL,
-                                                         tempFileBytes: staged.fileBytes)
+                                                         tempFileBytes: staged.fileBytes,
+                                                         remotePath: remotePath)
     activeUploadBytes += staged.fileBytes
     task.resume()
 
@@ -467,7 +472,8 @@ final class AssetUploader: NSObject, URLSessionTaskDelegate, URLSessionDataDeleg
     }
 
     tus.onComplete = { [weak self] in
-      self?.handleResumableComplete(localIdentifier: staged.localIdentifier)
+      self?.handleResumableComplete(localIdentifier: staged.localIdentifier,
+                                    remotePath: key)
     }
 
     tus.onError = { [weak self] message, retriable in
@@ -524,7 +530,8 @@ final class AssetUploader: NSObject, URLSessionTaskDelegate, URLSessionDataDeleg
     }
 
     uploader.onComplete = { [weak self] in
-      self?.handleResumableComplete(localIdentifier: staged.localIdentifier)
+      self?.handleResumableComplete(localIdentifier: staged.localIdentifier,
+                                    remotePath: key)
     }
 
     uploader.onError = { [weak self] message, retriable in
@@ -551,14 +558,14 @@ final class AssetUploader: NSObject, URLSessionTaskDelegate, URLSessionDataDeleg
 
   // MARK: - Resumable upload callbacks
 
-  private func handleResumableComplete(localIdentifier: String) {
+  private func handleResumableComplete(localIdentifier: String, remotePath: String?) {
     activeResumable.removeValue(forKey: localIdentifier)
     if let info = resumableTempFiles.removeValue(forKey: localIdentifier) {
       activeUploadBytes = max(0, activeUploadBytes - info.bytes)
       removeTempFile(at: info.url)
     }
     try? database.clearResumeState(localIdentifier: localIdentifier)
-    try? database.markDone(localIdentifier: localIdentifier)
+    try? database.markDone(localIdentifier: localIdentifier, remotePath: remotePath)
 
     MediaBackupLogger.shared.info("Uploader",
                                   "Resumable upload completed",
@@ -637,7 +644,9 @@ final class AssetUploader: NSObject, URLSessionTaskDelegate, URLSessionDataDeleg
         MediaBackupLogger.shared.info("Uploader",
                                       "[SIMULATED] Upload completed",
                                       context: ["localIdentifier": staged.localIdentifier])
-        try? self.database.markDone(localIdentifier: staged.localIdentifier)
+        let simPath = "simulated/\(staged.localIdentifier.replacingOccurrences(of: "/", with: "_"))"
+        try? self.database.markDone(localIdentifier: staged.localIdentifier,
+                                    remotePath: simPath)
         self.onUploadEvent?([
           "event": "completed",
           "localIdentifier": staged.localIdentifier,
@@ -799,7 +808,8 @@ final class AssetUploader: NSObject, URLSessionTaskDelegate, URLSessionDataDeleg
                                         "bytesSent": bytesSent,
                                         "progress": metrics.fractionCompleted,
                                       ])
-        try? self.database.markDone(localIdentifier: context.localIdentifier)
+        try? self.database.markDone(localIdentifier: context.localIdentifier,
+                                    remotePath: context.remotePath)
         self.onUploadEvent?([
           "event": "completed",
           "localIdentifier": context.localIdentifier,

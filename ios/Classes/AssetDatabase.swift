@@ -334,14 +334,19 @@ final class AssetDatabase {
     }
   }
 
-  func markDone(localIdentifier: String) throws {
+  func markDone(localIdentifier: String, remotePath: String? = nil) throws {
     try withLock {
       let uploadedAt = Date().timeIntervalSince1970
       _ = try executeUpdate(
-        sql: "UPDATE assets SET upload_status = 'done', uploaded_at = ?, last_error = NULL WHERE local_id = ?;",
+        sql: "UPDATE assets SET upload_status = 'done', uploaded_at = ?, last_error = NULL, remote_path = coalesce(?, remote_path) WHERE local_id = ?;",
         bind: { statement in
           sqlite3_bind_double(statement, 1, uploadedAt)
-          self.bindText(statement, index: 2, value: localIdentifier)
+          if let remotePath {
+            self.bindText(statement, index: 2, value: remotePath)
+          } else {
+            sqlite3_bind_null(statement, 2)
+          }
+          self.bindText(statement, index: 3, value: localIdentifier)
         }
       )
     }
@@ -564,6 +569,152 @@ final class AssetDatabase {
     }
   }
 
+  // MARK: - Asset query API (for building UIs)
+
+  func queryAssets(status: String?,
+                   mediaType: Int?,
+                   limit: Int,
+                   offset: Int,
+                   orderBy: String) throws -> [[String: Any]] {
+    try withLock {
+      guard let db else {
+        throw AssetDatabaseError.message("Database is not initialized")
+      }
+
+      var clauses: [String] = []
+      if status != nil { clauses.append("upload_status = ?1") }
+      if mediaType != nil { clauses.append("media_type = ?2") }
+      let whereClause = clauses.isEmpty ? "" : "WHERE \(clauses.joined(separator: " AND "))"
+
+      let sql = """
+        SELECT local_id, media_type, media_subtypes, creation_ts, modification_ts,
+               duration, pixel_width, pixel_height, is_favorite, is_hidden,
+               source_type, upload_status, retry_count, last_error, uploaded_at,
+               remote_path
+        FROM assets
+        \(whereClause)
+        \(orderBy)
+        LIMIT ?3 OFFSET ?4;
+      """
+
+      var statement: OpaquePointer?
+      guard sqlite3_prepare_v2(db, sql, -1, &statement, nil) == SQLITE_OK else {
+        let message = String(cString: sqlite3_errmsg(db))
+        throw AssetDatabaseError.message("Failed to prepare query: \(message)")
+      }
+      defer { sqlite3_finalize(statement) }
+
+      if let status { bindText(statement, index: 1, value: status) }
+      if let mediaType { sqlite3_bind_int64(statement, 2, sqlite3_int64(mediaType)) }
+      sqlite3_bind_int64(statement, 3, sqlite3_int64(max(1, limit)))
+      sqlite3_bind_int64(statement, 4, sqlite3_int64(max(0, offset)))
+
+      var rows: [[String: Any]] = []
+      while sqlite3_step(statement) == SQLITE_ROW {
+        var row: [String: Any] = [:]
+        row["localIdentifier"] = readString(statement, col: 0) ?? ""
+        row["mediaType"] = Int(sqlite3_column_int64(statement, 1))
+        row["mediaSubtypes"] = Int(sqlite3_column_int64(statement, 2))
+        row["creationTimestamp"] = readOptionalDouble(statement, col: 3)
+        row["modificationTimestamp"] = readOptionalDouble(statement, col: 4)
+        row["duration"] = sqlite3_column_double(statement, 5)
+        row["pixelWidth"] = Int(sqlite3_column_int64(statement, 6))
+        row["pixelHeight"] = Int(sqlite3_column_int64(statement, 7))
+        row["isFavorite"] = sqlite3_column_int(statement, 8) != 0
+        row["isHidden"] = sqlite3_column_int(statement, 9) != 0
+        row["sourceType"] = Int(sqlite3_column_int64(statement, 10))
+        row["uploadStatus"] = readString(statement, col: 11) ?? "pending"
+        row["retryCount"] = Int(sqlite3_column_int64(statement, 12))
+        row["lastError"] = readString(statement, col: 13)
+        row["uploadedAt"] = readOptionalDouble(statement, col: 14)
+        row["remotePath"] = readString(statement, col: 15)
+        rows.append(row)
+      }
+
+      return rows
+    }
+  }
+
+  func getAsset(localIdentifier: String) throws -> [String: Any]? {
+    let results = try queryAssets(status: nil, mediaType: nil,
+                                  limit: 1, offset: 0,
+                                  orderBy: "")
+    // queryAssets doesn't filter by ID, so use a dedicated query
+    return try withLock {
+      guard let db else {
+        throw AssetDatabaseError.message("Database is not initialized")
+      }
+
+      let sql = """
+        SELECT local_id, media_type, media_subtypes, creation_ts, modification_ts,
+               duration, pixel_width, pixel_height, is_favorite, is_hidden,
+               source_type, upload_status, retry_count, last_error, uploaded_at,
+               remote_path
+        FROM assets WHERE local_id = ?;
+      """
+
+      var statement: OpaquePointer?
+      guard sqlite3_prepare_v2(db, sql, -1, &statement, nil) == SQLITE_OK else { return nil }
+      defer { sqlite3_finalize(statement) }
+      bindText(statement, index: 1, value: localIdentifier)
+
+      guard sqlite3_step(statement) == SQLITE_ROW else { return nil }
+      var row: [String: Any] = [:]
+      row["localIdentifier"] = readString(statement, col: 0) ?? ""
+      row["mediaType"] = Int(sqlite3_column_int64(statement, 1))
+      row["mediaSubtypes"] = Int(sqlite3_column_int64(statement, 2))
+      row["creationTimestamp"] = readOptionalDouble(statement, col: 3)
+      row["modificationTimestamp"] = readOptionalDouble(statement, col: 4)
+      row["duration"] = sqlite3_column_double(statement, 5)
+      row["pixelWidth"] = Int(sqlite3_column_int64(statement, 6))
+      row["pixelHeight"] = Int(sqlite3_column_int64(statement, 7))
+      row["isFavorite"] = sqlite3_column_int(statement, 8) != 0
+      row["isHidden"] = sqlite3_column_int(statement, 9) != 0
+      row["sourceType"] = Int(sqlite3_column_int64(statement, 10))
+      row["uploadStatus"] = readString(statement, col: 11) ?? "pending"
+      row["retryCount"] = Int(sqlite3_column_int64(statement, 12))
+      row["lastError"] = readString(statement, col: 13)
+      row["uploadedAt"] = readOptionalDouble(statement, col: 14)
+      row["remotePath"] = readString(statement, col: 15)
+      return row
+    }
+  }
+
+  func countAssets(status: String?, mediaType: Int?) throws -> Int {
+    try withLock {
+      guard let db else {
+        throw AssetDatabaseError.message("Database is not initialized")
+      }
+
+      var clauses: [String] = []
+      if status != nil { clauses.append("upload_status = ?1") }
+      if mediaType != nil { clauses.append("media_type = ?2") }
+      let whereClause = clauses.isEmpty ? "" : "WHERE \(clauses.joined(separator: " AND "))"
+      let sql = "SELECT COUNT(*) FROM assets \(whereClause);"
+
+      var statement: OpaquePointer?
+      guard sqlite3_prepare_v2(db, sql, -1, &statement, nil) == SQLITE_OK else { return 0 }
+      defer { sqlite3_finalize(statement) }
+      if let status { bindText(statement, index: 1, value: status) }
+      if let mediaType { sqlite3_bind_int64(statement, 2, sqlite3_int64(mediaType)) }
+      if sqlite3_step(statement) == SQLITE_ROW {
+        return Int(sqlite3_column_int64(statement, 0))
+      }
+      return 0
+    }
+  }
+
+  private func readString(_ statement: OpaquePointer?, col: Int32) -> String? {
+    guard sqlite3_column_type(statement, col) != SQLITE_NULL,
+          let cStr = sqlite3_column_text(statement, col) else { return nil }
+    return String(cString: cStr)
+  }
+
+  private func readOptionalDouble(_ statement: OpaquePointer?, col: Int32) -> Any {
+    if sqlite3_column_type(statement, col) == SQLITE_NULL { return NSNull() }
+    return sqlite3_column_double(statement, col)
+  }
+
   private func open() throws {
     guard sqlite3_open(path, &db) == SQLITE_OK else {
       let message = db != nil ? String(cString: sqlite3_errmsg(db)) : "Unknown sqlite open error"
@@ -751,6 +902,9 @@ final class AssetDatabase {
     // offset so uploads can resume after app kill or crash.
     try addColumnIfMissing(columnName: "resume_url", definition: "TEXT")
     try addColumnIfMissing(columnName: "resume_offset", definition: "INTEGER DEFAULT 0")
+    // Remote path stored on successful upload so users can build UIs /
+    // generate download links without knowing the provider config.
+    try addColumnIfMissing(columnName: "remote_path", definition: "TEXT")
   }
 
   private func addColumnIfMissing(columnName: String, definition: String) throws {
