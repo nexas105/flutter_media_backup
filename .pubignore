@@ -1,0 +1,16 @@
+# Development / CI files not needed in the published package
+.env
+.env.*
+*.env.local
+.claude/
+.planning/
+Makefile
+CLAUDE.md
+.vscode/
+.idea/
+build/
+*.iml
+
+# Example app secrets
+example/.env
+example/.env.local
